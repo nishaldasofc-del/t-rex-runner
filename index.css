@@ -163,3 +163,56 @@ html, body {
   transition: transform 250ms cubic-bezier(0.4, 0, 1, 1) 400ms;
   z-index: 2;
 }
+/* AI Control Overlay Styles */
+.ai-panel {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  padding: 12px;
+  font-family: 'Open Sans', sans-serif;
+  font-size: 12px;
+  z-index: 9999;
+  width: 260px;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+.ai-panel h3 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: #333;
+}
+.ai-panel label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: bold;
+}
+.ai-panel input[type="text"] {
+  width: 100%;
+  padding: 4px;
+  margin-top: 3px;
+  box-sizing: border-box;
+  border: 1px solid #aaa;
+  border-radius: 4px;
+}
+.ai-panel button {
+  width: 100%;
+  padding: 6px;
+  background: #535353;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.ai-panel button:hover {
+  background: #333;
+}
+.ai-stats {
+  margin-top: 8px;
+  font-size: 11px;
+  color: #555;
+  border-top: 1px solid #eee;
+  padding-top: 6px;
+}
