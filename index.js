@@ -2750,3 +2750,220 @@ function onDocumentLoad() {
 }
 
 document.addEventListener('DOMContentLoaded', onDocumentLoad);
+// ==========================================
+// AI AUTOPILOT & GROQ OPTIMIZATION INTEGRATION
+// ==========================================
+(function() {
+  // Create UI overlay on load
+  window.addEventListener('load', () => {
+    const panel = document.createElement('div');
+    panel.className = 'ai-panel';
+    panel.innerHTML = `
+      <h3>AI Autopilot</h3>
+      <label>
+        Groq API Key:
+        <input type="text" id="groq-key" placeholder="gsk_..." />
+      </label>
+      <button id="toggle-ai">Enable AI Mode</button>
+      <div class="ai-stats">
+        <div>Status: <span id="ai-status">Inactive</span></div>
+        <div>Generation: <span id="ai-gen">0</span></div>
+        <div>Best Score: <span id="ai-best">0</span></div>
+        <div>Jump Mult: <span id="ai-jump-mult">1.8</span></div>
+        <div>Duck Mult: <span id="ai-duck-mult">1.2</span></div>
+      </div>
+    `;
+    document.body.appendChild(panel);
+
+    // Load saved settings
+    if (localStorage.getItem('groq_api_key')) {
+      document.getElementById('groq-key').value = localStorage.getItem('groq_api_key');
+    }
+
+    document.getElementById('groq-key').addEventListener('input', (e) => {
+      localStorage.setItem('groq_api_key', e.target.value);
+    });
+
+    document.getElementById('toggle-ai').addEventListener('click', toggleAI);
+  });
+
+  let aiActive = false;
+  let generation = 0;
+  let bestScore = 0;
+  let jumpMultiplier = 1.8; // Default trigger threshold
+  let duckMultiplier = 1.2;
+
+  function toggleAI() {
+    aiActive = !aiActive;
+    const btn = document.getElementById('toggle-ai');
+    const status = document.getElementById('ai-status');
+    
+    if (aiActive) {
+      btn.textContent = "Disable AI Mode";
+      btn.style.background = "#d32f2f";
+      status.textContent = "Running...";
+      status.style.color = "green";
+      startAutopilotLoop();
+      triggerGameStart();
+    } else {
+      btn.textContent = "Enable AI Mode";
+      btn.style.background = "#535353";
+      status.textContent = "Inactive";
+      status.style.color = "black";
+    }
+  }
+
+  function triggerGameStart() {
+    const runner = window.Runner && window.Runner.instance_;
+    if (runner) {
+      if (!runner.playing) {
+        // Simulate a spacebar keydown to start/restart
+        const event = new KeyboardEvent('keydown', { keyCode: 32, which: 32 });
+        document.dispatchEvent(event);
+      }
+    }
+  }
+
+  // Real-time loop (60 FPS) checking for incoming obstacles
+  function startAutopilotLoop() {
+    if (!aiActive) return;
+
+    const runner = window.Runner && window.Runner.instance_;
+    if (runner && runner.playing) {
+      const tRex = runner.tRex;
+      const obstacles = runner.horizon.obstacles;
+
+      if (obstacles && obstacles.length > 0) {
+        const nextObstacle = obstacles[0];
+        // Only target obstacles in front of the dinosaur
+        if (nextObstacle.xPos > tRex.xPos) {
+          const distance = nextObstacle.xPos - tRex.xPos;
+          const speed = runner.currentSpeed;
+
+          // Decision boundaries scaled dynamically by the current velocity
+          const jumpThreshold = speed * jumpMultiplier * 10;
+          const duckThreshold = speed * duckMultiplier * 10;
+
+          if (distance < jumpThreshold) {
+            // Is it a low-altitude bird? Duck. Otherwise, jump.
+            if (nextObstacle.typeConfig && nextObstacle.typeConfig.type === 'PTERODACTYL' && nextObstacle.yPos > 50) {
+              simulateKey('keydown', 40); // Duck
+            } else if (!tRex.jumping) {
+              simulateKey('keydown', 38); // Jump
+              setTimeout(() => simulateKey('keyup', 38), 150);
+            }
+          }
+        }
+      } else {
+        // Release duck key if no obstacle is close
+        simulateKey('keyup', 40);
+      }
+    }
+
+    requestAnimationFrame(startAutopilotLoop);
+  }
+
+  function simulateKey(type, code) {
+    const event = new KeyboardEvent(type, { keyCode: code, which: code });
+    document.dispatchEvent(event);
+  }
+
+  // Intercept the game over event to learn from the crash
+  let originalGameOver = null;
+  
+  function checkHook() {
+    if (window.Runner && window.Runner.prototype && !originalGameOver) {
+      originalGameOver = window.Runner.prototype.gameOver;
+      window.Runner.prototype.gameOver = function() {
+        // Call the original game over logic
+        originalGameOver.apply(this, arguments);
+
+        if (aiActive) {
+          handleCrash(this);
+        }
+      };
+    } else {
+      setTimeout(checkHook, 200);
+    }
+  }
+  checkHook();
+
+  // Send telemetry to Groq API on death
+  async function handleCrash(runnerInstance) {
+    const score = Math.floor(runnerInstance.distanceRan);
+    if (score > bestScore) {
+      bestScore = score;
+      document.getElementById('ai-best').textContent = bestScore;
+    }
+
+    generation++;
+    document.getElementById('ai-gen').textContent = generation;
+    const status = document.getElementById('ai-status');
+    status.textContent = "Analyzing crash...";
+    status.style.color = "orange";
+
+    const apiKey = localStorage.getItem('groq_api_key');
+    if (!apiKey) {
+      console.warn("Groq API key not set. Skipping learning optimization step.");
+      status.textContent = "No API Key (Using Defaults)";
+      setTimeout(triggerGameStart, 1500);
+      return;
+    }
+
+    // Capture crash context
+    const obstacles = runnerInstance.horizon.obstacles;
+    const crashObstacle = obstacles && obstacles[0] ? {
+      type: obstacles[0].typeConfig.type,
+      width: obstacles[0].width,
+      yPos: obstacles[0].yPos,
+      speedAtCrash: runnerInstance.currentSpeed
+    } : { type: 'UNKNOWN', speedAtCrash: runnerInstance.currentSpeed };
+
+    const prompt = `You are a machine learning agent optimizing thresholds for an endless runner game.
+    The goal is to tweak the jump threshold multiplier (currently ${jumpMultiplier}) and duck threshold multiplier (currently ${duckMultiplier}).
+    On this run, the player reached a score of ${score} (Best overall: ${bestScore}).
+    The game crashed due to a ${crashObstacle.type} obstacle with height offset ${crashObstacle.yPos} at speed ${crashObstacle.speedAtCrash}.
+    
+    If the score was low, the multipliers might be too high (jumping too early) or too low (jumping too late).
+    Respond strictly in JSON format matching the schema below. Do not add any conversational text.
+    {
+      "jumpMultiplier": <float between 1.0 and 3.0>,
+      "duckMultiplier": <float between 1.0 and 2.5>,
+      "reasoning": "<string text explaining adjustments>"
+    }`;
+
+    try {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${apiKey}`,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          response_format: { type: "json_object" },
+          messages: [{ role: "user", content: prompt }]
+        })
+      });
+
+      const data = await response.json();
+      const payload = JSON.parse(data.choices[0].message.content);
+
+      if (payload.jumpMultiplier && payload.duckMultiplier) {
+        jumpMultiplier = parseFloat(payload.jumpMultiplier);
+        duckMultiplier = parseFloat(payload.duckMultiplier);
+
+        document.getElementById('ai-jump-mult').textContent = jumpMultiplier.toFixed(2);
+        document.getElementById('ai-duck-mult').textContent = duckMultiplier.toFixed(2);
+        console.log(`[Groq Optimized Parameters]:`, payload);
+      }
+    } catch (err) {
+      console.error("Groq Optimization Error:", err);
+    } finally {
+      status.textContent = "Running...";
+      status.style.color = "green";
+      // Auto-restart game after analysis delay
+      setTimeout(triggerGameStart, 1000);
+    }
+  }
+})();
