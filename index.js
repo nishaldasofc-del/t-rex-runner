@@ -2815,12 +2815,26 @@ document.addEventListener('DOMContentLoaded', onDocumentLoad);
 
   function triggerGameStart() {
     const runner = window.Runner && window.Runner.instance_;
-    if (runner) {
-      if (!runner.playing) {
-        // Simulate a spacebar keydown to start/restart
-        const event = new KeyboardEvent('keydown', { keyCode: 32, which: 32 });
-        document.dispatchEvent(event);
+    if (!runner) return;
+
+    if (runner.crashed) {
+      // The game's own restart logic only fires from onKeyUp (see Runner.prototype.onKeyUp),
+      // and only after GAMEOVER_CLEAR_TIME has elapsed. Calling restart() directly is the
+      // reliable way to bring the game back after a crash.
+      const deltaTime = Date.now() - runner.time;
+      if (deltaTime >= runner.config.GAMEOVER_CLEAR_TIME) {
+        runner.restart();
+      } else {
+        // Not enough time has passed yet — try again shortly.
+        setTimeout(triggerGameStart, runner.config.GAMEOVER_CLEAR_TIME - deltaTime + 50);
       }
+      return;
+    }
+
+    if (!runner.playing) {
+      // First-ever start: needs a real keydown to kick off loadSounds/playing state.
+      const event = new KeyboardEvent('keydown', { keyCode: 32, which: 32 });
+      document.dispatchEvent(event);
     }
   }
 
@@ -2904,9 +2918,9 @@ document.addEventListener('DOMContentLoaded', onDocumentLoad);
 
     const apiKey = localStorage.getItem('groq_api_key');
     if (!apiKey) {
-      console.warn("Groq API key not set. Skipping learning optimization step.");
-      status.textContent = "No API Key (Using Defaults)";
-      setTimeout(triggerGameStart, 1500);
+      console.warn("Groq API key not set. Game will not restart without a Groq API key.");
+      status.textContent = "No API Key — Paused";
+      status.style.color = "red";
       return;
     }
 
@@ -2956,14 +2970,16 @@ document.addEventListener('DOMContentLoaded', onDocumentLoad);
         document.getElementById('ai-jump-mult').textContent = jumpMultiplier.toFixed(2);
         document.getElementById('ai-duck-mult').textContent = duckMultiplier.toFixed(2);
         console.log(`[Groq Optimized Parameters]:`, payload);
+
+        // Only Groq triggers the restart — after it successfully responds and updates params
+        status.textContent = "Running...";
+        status.style.color = "green";
+        setTimeout(triggerGameStart, 1000);
       }
     } catch (err) {
       console.error("Groq Optimization Error:", err);
-    } finally {
-      status.textContent = "Running...";
-      status.style.color = "green";
-      // Auto-restart game after analysis delay
-      setTimeout(triggerGameStart, 1000);
+      status.textContent = "Groq Error — Paused";
+      status.style.color = "red";
     }
   }
 })();
